@@ -35,6 +35,8 @@ dependencies:
   provider: ^6.1.2
   audioplayers: ^6.0.0
   cupertino_icons: ^1.0.8
+  intl: ^0.20.2
+  convert: ^3.1.2
 
 dev_dependencies:
   flutter_test:
@@ -104,12 +106,9 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png" # Image de premier plan
   flutter_native_splash:
   # L'image doit être au centre de l'écran (généralement un logo)
-  image: assets/splash/logo.png 
+    image: assets/splash/logo.png 
   # Couleur d'arrière-plan de l'écran de chargement
-  color: "#FFFFFF" 
+    color: "#FFFFFF" 
   # Image pour Android 12 et supérieur (si différente)
-  android_12: 
-    image: assets/splash/logo_android12.png
-    color: "#FFFFFF"
 
   # Désactivez les plateformes si vous ne les ciblez pas

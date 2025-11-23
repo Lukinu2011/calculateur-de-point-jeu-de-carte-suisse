@@ -1,11 +1,10 @@
-import 'dart:convert';
+// lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
-
-// Importe la page d'accueil depuis son nouveau dossier
 import 'pages/Parametrage/home_page.dart';
 
 // --- GESTIONNAIRE DE SONS ---
@@ -16,8 +15,9 @@ class SoundManager {
   SoundManager() {
     _clickPlayer.setPlayerMode(PlayerMode.lowLatency);
     _errorPlayer.setPlayerMode(PlayerMode.lowLatency);
-    _clickPlayer.setSource(AssetSource('audio/click.mp3'));
-    _errorPlayer.setSource(AssetSource('audio/error.mp3'));
+    // Assurez-vous que ces chemins d'accès aux assets sont corrects
+    // _clickPlayer.setSource(AssetSource('audio/click.mp3'));
+    // _errorPlayer.setSource(AssetSource('audio/error.mp3'));
   }
 
   void playClick(double volume) {
@@ -34,7 +34,6 @@ class SoundManager {
   }
 }
 
-// Instance globale du gestionnaire de sons
 final soundManager = SoundManager();
 
 // --- Fournisseur de Paramètres (State Management) ---
@@ -71,11 +70,44 @@ class SettingsProvider extends ChangeNotifier {
   }
 }
 
-// --- Modèle de données pour la sauvegarde et le chargement ---
-class GameData {
+// --- MODIFIÉ : Modèle de données Pomme ---
+class PommeGameData {
+  final String saveName;
+  final String autoSaveKey;
   final List<Player> players;
   final int targetScore;
-  GameData({required this.players, required this.targetScore});
+  final String? lastSaveTime; // NOUVEAU: Date de dernière sauvegarde
+
+  PommeGameData({
+    required this.saveName,
+    required this.autoSaveKey,
+    required this.players,
+    required this.targetScore,
+    this.lastSaveTime,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'saveName': saveName,
+    'autoSaveKey': autoSaveKey,
+    'targetScore': targetScore,
+    'players': players.map((player) => player.toJson()).toList(),
+    'lastSaveTime': lastSaveTime,
+  };
+
+  factory PommeGameData.fromJson(Map<String, dynamic> json) {
+    var playersJson = json['players'] as List;
+    List<Player> players = playersJson
+        .map((pJson) => Player.fromJson(pJson))
+        .toList();
+
+    return PommeGameData(
+      saveName: json['saveName'] as String,
+      autoSaveKey: json['autoSaveKey'] as String,
+      players: players,
+      targetScore: json['targetScore'] as int,
+      lastSaveTime: json['lastSaveTime'] as String?,
+    );
+  }
 }
 
 class Player {
@@ -118,19 +150,16 @@ class MyApp extends StatelessWidget {
           title: 'Jeu de Pommes',
           debugShowCheckedModeBanner: false,
           themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-
           theme: ThemeData(
             primarySwatch: Colors.red,
             brightness: Brightness.light,
             visualDensity: VisualDensity.adaptivePlatformDensity,
           ),
-
           darkTheme: ThemeData(
             primarySwatch: Colors.red,
             brightness: Brightness.dark,
             visualDensity: VisualDensity.adaptivePlatformDensity,
           ),
-
           home: const HomePage(),
         );
       },

@@ -46,7 +46,7 @@ class SettingsPage extends StatelessWidget {
                     settings.setVolume(newValue);
                   },
                   onChangeEnd: (double newValue) {
-                    soundManager.playClick(newValue);
+                    soundManager.playClick(settings.volume);
                   },
                 ),
 

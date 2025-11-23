@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 // Imports des utilitaires
 import '../../main.dart';
-// Imports des pages dans les autres dossiers
+
+// Imports des pages dans les autres dossiers;
 import '../Jass/setup_jass_page.dart';
 import '../Mise/setup_mise_page.dart';
 import '../Pomme/setup_pomme_page.dart';
@@ -32,12 +33,7 @@ class HomePage extends StatelessWidget {
       child: Text(text),
       onPressed: () {
         soundManager.playClick(settings.volume);
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => page,
-          ), // 'page' n'est pas const ici
-        );
+        Navigator.push(context, MaterialPageRoute(builder: (context) => page));
       },
     );
   }
@@ -49,7 +45,7 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Accueil'),
-        actions: [
+        actions: <Widget>[
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -65,13 +61,12 @@ class HomePage extends StatelessWidget {
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            // <-- L'erreur venait sûrement d'un oubli de 'children:'
+          children: [
+            // --- TITRE ---
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 30.0),
+              padding: EdgeInsets.only(bottom: 20.0),
               child: Text(
-                'Bienvenue sur votre Calculateur de Points',
+                'Calculateur de Points',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 50, fontWeight: FontWeight.w300),
               ),
@@ -82,12 +77,13 @@ class HomePage extends StatelessWidget {
             // --- BOUTON JASS ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 100.0),
+              // Après (Correction)
               child: _buildHomeButton(
                 context,
                 settings,
                 'Jass',
-                const SetupJassPage(), // <-- 'const' est OK ici
-                const Color.fromARGB(0, 0, 0, 0),
+                SetupJassPage(), // Sans 'const'
+                const Color.fromARGB(20, 160, 100, 255),
               ),
             ),
 
@@ -100,8 +96,8 @@ class HomePage extends StatelessWidget {
                 context,
                 settings,
                 'Mise',
-                const SetupMisePage(), // <-- 'const' est OK ici
-                const Color.fromARGB(0, 0, 0, 0),
+                SetupMisePage(),
+                const Color.fromARGB(20, 160, 100, 255),
               ),
             ),
 
@@ -114,8 +110,8 @@ class HomePage extends StatelessWidget {
                 context,
                 settings,
                 'Pomme',
-                const SetupPommePage(), // <-- 'const' est OK ici
-                const Color.fromARGB(0, 0, 0, 0),
+                SetupPommePage(),
+                const Color.fromARGB(20, 160, 100, 255),
               ),
             ),
           ],

@@ -10,7 +10,7 @@ class SetupMisePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Configuration Mise'), // Titre mis à jour
       ),
-      body: const Center(child: Text('')),
+      body: const Center(child: Text('Page de configuration de la Mise')),
     );
   }
 }

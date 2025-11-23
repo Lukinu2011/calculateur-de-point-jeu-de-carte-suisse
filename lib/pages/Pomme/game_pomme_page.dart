@@ -1,33 +1,40 @@
+// lib/pages/Pomme/game_pomme_page.dart
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
-// Imports des utilitaires et modèles du fichier principal
-import '../../main.dart';
-// Imports des pages Pomme
-import 'load_game_pomme_page.dart';
+import 'package:intl/intl.dart'; // Import pour DateFormat
+import '../../main.dart'; // Pour PommeGameData, Player, SoundManager, SettingsProvider
+import 'setup_pomme_page.dart'; // Pour les préfixes
 
-// --- PAGE 3 : Page de Jeu "Pomme" ---
 class GamePommePage extends StatefulWidget {
-  final List<Player> players;
-  final int targetScore;
-  const GamePommePage({
-    super.key,
-    required this.players,
-    required this.targetScore,
-  });
+  final PommeGameData loadedData;
+  const GamePommePage({super.key, required this.loadedData});
+
   @override
   State<GamePommePage> createState() => _GamePommePageState();
 }
 
 class _GamePommePageState extends State<GamePommePage> {
+  // État local du jeu
+  late PommeGameData _gameData;
+  late List<Player> _players;
+  late int _targetScore;
+  late String _autoSaveKey; // Clé unique pour l'autosave
+
   String? _winner;
-  final TextEditingController _saveNameController = TextEditingController();
 
   @override
-  void dispose() {
-    _saveNameController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    // Déballe les données chargées
+    _gameData = widget.loadedData;
+    _players = _gameData.players;
+    _targetScore = _gameData.targetScore;
+    _autoSaveKey = _gameData.autoSaveKey;
+
+    _checkWinnerOnLoad(); // Vérifie si la partie chargée avait déjà un gagnant
   }
 
   void _updateScore(int playerIndex, {bool addPoint = true}) {
@@ -38,16 +45,17 @@ class _GamePommePageState extends State<GamePommePage> {
 
     setState(() {
       if (addPoint) {
-        widget.players[playerIndex].points++;
+        _players[playerIndex].points++;
       } else {
-        widget.players[playerIndex].pommes++;
+        _players[playerIndex].pommes++;
       }
-      _checkWinner(widget.players[playerIndex]);
+      _checkWinner(_players[playerIndex]);
     });
+    _autoSaveGame(); // Sauvegarde auto à chaque clic
   }
 
   void _checkWinner(Player player) {
-    if (player.score >= widget.targetScore) {
+    if (player.score >= _targetScore) {
       setState(() {
         _winner = player.name;
       });
@@ -55,24 +63,194 @@ class _GamePommePageState extends State<GamePommePage> {
     }
   }
 
+  void _checkWinnerOnLoad() {
+    for (var player in _players) {
+      if (player.score >= _targetScore) {
+        setState(() {
+          _winner = player.name;
+        });
+        break;
+      }
+    }
+  }
+
+  // --- Sauvegarde Automatique (MIS À JOUR) ---
+  Future<void> _autoSaveGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String timestamp = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(DateTime.now());
+
+    // Met à jour l'objet _gameData avec l'état actuel et le timestamp
+    _gameData = PommeGameData(
+      saveName: _gameData.saveName,
+      autoSaveKey: _autoSaveKey,
+      players: _players,
+      targetScore: _targetScore,
+      lastSaveTime: timestamp, // AJOUTÉ
+    );
+
+    String saveString = jsonEncode(_gameData.toJson());
+    await prefs.setString(_autoSaveKey, saveString);
+  }
+
+  // --- Sauvegarde Manuelle (MIS À JOUR) ---
+  void _showSaveDialog() {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final String timestamp = DateFormat(
+      'yyyy-MM-dd_HH-mm',
+    ).format(DateTime.now());
+
+    // Utilise _gameData.saveName pour pré-remplir
+    final TextEditingController saveNameController = TextEditingController(
+      text: '${_gameData.saveName}_$timestamp',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Sauvegarder la partie'),
+          content: TextField(
+            controller: saveNameController,
+            decoration: const InputDecoration(hintText: "Nom de la sauvegarde"),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Annuler'),
+              onPressed: () => Navigator.pop(context),
+            ),
+            TextButton(
+              child: const Text('Sauvegarder'),
+              onPressed: () {
+                if (saveNameController.text.isNotEmpty) {
+                  soundManager.playClick(settings.volume);
+                  _manualSaveGame(saveNameController.text);
+                  Navigator.pop(context);
+                } else {
+                  soundManager.playError(settings.volume);
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _manualSaveGame(String saveName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final String timestamp = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(DateTime.now());
+
+    final PommeGameData manualSaveData = PommeGameData(
+      saveName: saveName,
+      autoSaveKey: _autoSaveKey,
+      players: _players,
+      targetScore: _targetScore,
+      lastSaveTime: timestamp, // AJOUTÉ
+    );
+
+    String saveString = jsonEncode(manualSaveData.toJson());
+    await prefs.setString('$pommeSavePrefix$saveName', saveString);
+
+    if (mounted) {
+      soundManager.playClick(settings.volume);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Partie "$saveName" sauvegardée !')),
+      );
+    }
+  }
+
+  // --- Affichage du résumé (INCHANGÉ) ---
+  void _showSummaryDialog() {
+    // Ferme le dialogue de victoire s'il est ouvert
+    if (_winner != null && mounted) {
+      Navigator.of(context).pop();
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Résumé de la Partie'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _players.length,
+              itemBuilder: (context, index) {
+                final player = _players[index];
+                return ListTile(
+                  leading: CircleAvatar(child: Text('${index + 1}')),
+                  title: Text(
+                    player.name,
+                    style: TextStyle(
+                      fontWeight: player.score >= _targetScore
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: Text(
+                    'Score Final: ${player.score}',
+                    style: TextStyle(
+                      fontWeight: player.score >= _targetScore
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: player.score >= _targetScore ? Colors.green : null,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Fermer'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- Gestion de fin de partie (INCHANGÉ) ---
   void _showWinnerDialog(String winnerName) {
-    final int finalScore = widget.players
-        .firstWhere((p) => p.name == _winner)
-        .score;
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Partie terminée !'),
-          content: Text(
-            '$winnerName a gagné la partie avec un score de $finalScore !',
-          ),
+          title: const Text('Partie terminée ! 🎉'),
+          content: Text('$winnerName a gagné la partie !'),
           actions: [
+            // Bouton 1 : Annuler la partie (Retour Accueil et Supprimer l'autosave)
             TextButton(
-              child: const Text("Retour à l'accueil"),
+              child: const Text(
+                "Annuler la partie (Retour Accueil & Supprimer)",
+                style: TextStyle(color: Colors.red),
+              ),
               onPressed: () {
+                soundManager.playClick(settings.volume);
+                // Supprime l'autosave
+                SharedPreferences.getInstance().then((prefs) {
+                  prefs.remove(_autoSaveKey);
+                });
                 Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
+            // Bouton 2 : Voir le Résumé
+            TextButton(
+              child: const Text("Voir le Résumé"),
+              onPressed: () {
+                soundManager.playClick(settings.volume);
+                _showSummaryDialog();
               },
             ),
           ],
@@ -88,7 +266,7 @@ class _GamePommePageState extends State<GamePommePage> {
         return AlertDialog(
           title: const Text("Quitter la partie ?"),
           content: const Text(
-            "Voulez-vous vraiment retourner à l'accueil ? Toute la progression non sauvegardée sera perdue.",
+            "La partie est sauvegardée automatiquement. Voulez-vous vraiment quitter ?",
           ),
           actions: [
             TextButton(
@@ -107,115 +285,135 @@ class _GamePommePageState extends State<GamePommePage> {
     );
   }
 
-  void _showSaveDialog() {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    _saveNameController.clear();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Sauvegarder la partie'),
-          content: TextField(
-            controller: _saveNameController,
-            decoration: const InputDecoration(hintText: "Nom de la sauvegarde"),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Annuler'),
-              onPressed: () => Navigator.pop(context),
+  // --- WIDGET : Carte joueur stylisée comme le Jass (INCHANGÉ) ---
+  Widget _buildPlayerCard(Player player, int index, bool isWinner) {
+    return Card(
+      color: isWinner
+          ? Theme.of(context).brightness == Brightness.dark
+                ? Colors.green.shade800
+                : Colors.green.shade200
+          : Theme.of(context).cardColor,
+      elevation: 6,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            // Nom du joueur (style gras, grande taille)
+            Text(
+              player.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 28, // Plus grand
+                fontWeight: FontWeight.w900, // Extra gras
+                color: isWinner
+                    ? Colors.white
+                    : Theme.of(context).textTheme.bodyLarge?.color,
+              ),
             ),
-            TextButton(
-              child: const Text('Sauvegarder'),
-              onPressed: () {
-                if (_saveNameController.text.isNotEmpty) {
-                  soundManager.playClick(settings.volume);
-                  _saveGame(_saveNameController.text);
-                  Navigator.pop(context);
-                } else {
-                  soundManager.playError(settings.volume);
-                }
-              },
+
+            const SizedBox(height: 10),
+
+            // Score total (style très grand)
+            Text(
+              '${player.score}',
+              style: TextStyle(
+                fontSize: 48, // Très grand
+                fontWeight: FontWeight.w900,
+                color: isWinner ? Colors.white : Colors.indigo.shade700,
+              ),
+            ),
+
+            // Détails (Points et Pommes)
+            Text(
+              'Points : ${player.points}, Pommes : ${player.pommes}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: isWinner ? Colors.white : Colors.grey.shade600,
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // Boutons d'ajout (style Jass)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Point'),
+                    // Style Jass: Vert foncé
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(
+                        double.infinity,
+                        45,
+                      ), // Plus large
+                    ),
+                    onPressed: _winner == null
+                        ? () => _updateScore(index, addPoint: true)
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Pomme'),
+                    // Style Jass: Rouge
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(
+                        double.infinity,
+                        45,
+                      ), // Plus large
+                    ),
+                    onPressed: _winner == null
+                        ? () => _updateScore(index, addPoint: false)
+                        : null,
+                  ),
+                ),
+              ],
             ),
           ],
-        );
-      },
-    );
-  }
-
-  Future<void> _saveGame(String saveName) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      List<Map<String, dynamic>> playersJson = widget.players
-          .map((player) => player.toJson())
-          .toList();
-      Map<String, dynamic> saveObject = {
-        'targetScore': widget.targetScore,
-        'players': playersJson,
-      };
-      String saveString = jsonEncode(saveObject);
-      await prefs.setString('game_save_$saveName', saveString);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Partie "$saveName" sauvegardée !')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erreur de sauvegarde : $e')));
-      }
-    }
-  }
-
-  void _loadGame() async {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    soundManager.playClick(settings.volume);
-
-    final GameData? loadedData = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const LoadGamePommePage()),
-    );
-
-    if (loadedData != null && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GamePommePage(
-            players: loadedData.players,
-            targetScore: loadedData.targetScore,
-          ),
         ),
-      );
-    }
-  }
-
-  void _onHomeMenuSelected(String value) {
-    switch (value) {
-      case 'home':
-        _showReturnHomeDialog();
-        break;
-      case 'save':
-        _showSaveDialog();
-        break;
-      case 'load':
-        _loadGame();
-        break;
-    }
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Score à atteindre : ${widget.targetScore}'),
+        // CORRECTION : Utilise saveName pour le titre
+        title: Text(
+          '${_gameData.saveName} - Score Cible : $_targetScore',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
         automaticallyImplyLeading: false,
         actions: [
           PopupMenuButton<String>(
-            onSelected: _onHomeMenuSelected,
-            icon: const Icon(Icons.home),
-            itemBuilder: (BuildContext) => <PopupMenuEntry<String>>[
+            onSelected: (value) {
+              final settings = Provider.of<SettingsProvider>(
+                context,
+                listen: false,
+              );
+              soundManager.playClick(settings.volume);
+
+              if (value == 'home') {
+                _showReturnHomeDialog();
+              } else if (value == 'save') {
+                _showSaveDialog();
+              }
+            },
+            icon: const Icon(
+              Icons.menu,
+            ), // Utilisation de l'icône menu pour la consistance
+            itemBuilder: (BuildContext) => [
               const PopupMenuItem<String>(
                 value: 'home',
                 child: ListTile(
@@ -227,96 +425,43 @@ class _GamePommePageState extends State<GamePommePage> {
                 value: 'save',
                 child: ListTile(
                   leading: Icon(Icons.save),
-                  title: Text('Sauvegarder'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'load',
-                child: ListTile(
-                  leading: Icon(Icons.folder_open),
-                  title: Text('Charger une sauvegarde'),
+                  title: Text('Sauvegarder manuellement'),
                 ),
               ),
             ],
           ),
         ],
       ),
-      body: Consumer<SettingsProvider>(
-        builder: (context, settings, child) {
-          return ListView.builder(
-            padding: const EdgeInsets.all(8.0),
-            itemCount: widget.players.length,
+      // --- LayoutBuilder ---
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Si Hauteur > Largeur (Portrait) = 1 colonne
+          bool useHorizontalLayout =
+              constraints.maxHeight > constraints.maxWidth;
+
+          int crossAxisCount = useHorizontalLayout ? 1 : 2;
+          if (!useHorizontalLayout && _players.length >= 5) crossAxisCount = 3;
+          if (!useHorizontalLayout && _players.length >= 7) crossAxisCount = 4;
+
+          return GridView.builder(
+            padding: const EdgeInsets.all(12.0),
+            // Utilise un GridView pour s'adapter
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: useHorizontalLayout ? 3.5 : 0.8, // Ratio ajusté
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+            ),
+            itemCount: _players.length,
             itemBuilder: (context, index) {
-              final player = widget.players[index];
+              final player = _players[index];
               final isWinner = _winner == player.name;
 
-              return Card(
-                color: isWinner ? const Color.fromARGB(255, 40, 150, 40) : null,
-                elevation: 4,
-                margin: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        player.name,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: isWinner ? Colors.white : null,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Score : ${player.score}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        ' (Points : ${player.points}, Pommes : ${player.pommes})',
-                      ),
-                      const SizedBox(height: 10),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.add),
-                            label: const Text('Point'),
-                            style: ElevatedButton.styleFrom(
-                              iconColor: Colors.white,
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                40,
-                                150,
-                                40,
-                              ),
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () =>
-                                _updateScore(index, addPoint: true),
-                          ),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.add),
-                            label: const Text('Pomme'),
-                            style: ElevatedButton.styleFrom(
-                              iconColor: Colors.white,
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                            ),
-
-                            onPressed: () =>
-                                _updateScore(index, addPoint: false),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
+              return _buildPlayerCard(
+                player,
+                index,
+                isWinner,
+              ); // Utilisation du nouveau widget
             },
           );
         },

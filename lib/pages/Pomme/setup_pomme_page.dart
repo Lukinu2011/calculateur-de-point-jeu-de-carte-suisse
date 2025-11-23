@@ -1,24 +1,37 @@
+// lib/pages/Pomme/setup_pomme_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-// Imports des utilitaires et modèles du fichier principal (remonte de deux niveaux)
+import 'package:intl/intl.dart'; // Pour la date et l'heure
 import '../../main.dart';
-// Imports des pages Pomme
 import 'game_pomme_page.dart';
 import 'load_game_pomme_page.dart';
 
-// --- PAGE 2 : Configuration "Pomme" ---
+// Préfixes de sauvegarde pour Pomme
+const String pommeSavePrefix = 'pomme_save_';
+const String pommeAutoSavePrefix = 'pomme_autosave_';
+
 class SetupPommePage extends StatefulWidget {
-  const SetupPommePage({super.key}); // <-- Déjà const, OK
+  const SetupPommePage({super.key});
   @override
   State<SetupPommePage> createState() => _SetupPommePageState();
 }
 
 class _SetupPommePageState extends State<SetupPommePage> {
-  // <-- Le constructeur de l'ÉTAT n'est pas const// ...
   final List<Player> _players = [];
   final TextEditingController _scoreController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  // NOUVEAU
+  final TextEditingController _matchNameController = TextEditingController();
+
+  @override
+  void dispose() {
+    _scoreController.dispose();
+    _nameController.dispose();
+    _matchNameController.dispose(); // NOUVEAU
+    super.dispose();
+  }
 
   void _addPlayerDialog() {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
@@ -59,9 +72,9 @@ class _SetupPommePageState extends State<SetupPommePage> {
     );
   }
 
+  // --- MODIFIÉ ---
   void _startGame() {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final int targetScore = int.tryParse(_scoreController.text) ?? 7;
 
     if (_players.length < 2) {
       soundManager.playError(settings.volume);
@@ -73,21 +86,46 @@ class _SetupPommePageState extends State<SetupPommePage> {
       return;
     }
 
+    final int targetScore = int.tryParse(_scoreController.text) ?? 7;
+
+    // --- LOGIQUE DE SAUVEGARDE ---
+    final String matchName = _matchNameController.text.isEmpty
+        ? 'Match'
+        : _matchNameController.text;
+    final String timestamp = DateFormat(
+      'yyyy-MM-dd_HH-mm-ss',
+    ).format(DateTime.now());
+    final String newAutoSaveKey = '$pommeAutoSavePrefix${matchName}_$timestamp';
+    final String currentTime = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(DateTime.now()); // Date de création
+
+    // Appel du constructeur PommeGameData corrigé
+    final PommeGameData gameData = PommeGameData(
+      saveName: matchName,
+      autoSaveKey: newAutoSaveKey,
+      players: _players,
+      targetScore: targetScore,
+      lastSaveTime:
+          currentTime, // Ajout de la date de création/première sauvegarde
+    );
+    // --- FIN LOGIQUE ---
+
     soundManager.playClick(settings.volume);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            GamePommePage(players: _players, targetScore: targetScore),
+        builder: (context) => GamePommePage(loadedData: gameData),
       ),
     );
   }
 
+  // --- MODIFIÉ ---
   void _loadGame() async {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     soundManager.playClick(settings.volume);
 
-    final GameData? loadedData = await Navigator.push(
+    final PommeGameData? loadedData = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const LoadGamePommePage()),
     );
@@ -96,20 +134,10 @@ class _SetupPommePageState extends State<SetupPommePage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => GamePommePage(
-            players: loadedData.players,
-            targetScore: loadedData.targetScore,
-          ),
+          builder: (context) => GamePommePage(loadedData: loadedData),
         ),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _scoreController.dispose();
-    _nameController.dispose();
-    super.dispose();
   }
 
   @override
@@ -117,23 +145,27 @@ class _SetupPommePageState extends State<SetupPommePage> {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configuration Pomme'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
-      ),
+      appBar: AppBar(title: const Text('Configuration Pomme')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            // --- NOUVEAU CHAMP ---
+            TextField(
+              controller: _matchNameController,
+              decoration: const InputDecoration(
+                labelText: 'Nom de la Partie',
+                hintText: 'Nouvelle Partie',
+                prefixIcon: Icon(Icons.label),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: _scoreController,
               decoration: const InputDecoration(
                 labelText: 'Score à atteindre',
+                hintText: '7',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
@@ -149,7 +181,10 @@ class _SetupPommePageState extends State<SetupPommePage> {
                 _addPlayerDialog();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 40),
+                minimumSize: const Size(double.infinity, 50),
+                backgroundColor: Colors.blueGrey,
+                foregroundColor: Colors.white,
+                textStyle: const TextStyle(fontSize: 18),
               ),
             ),
             const SizedBox(height: 10),
@@ -159,7 +194,10 @@ class _SetupPommePageState extends State<SetupPommePage> {
               label: const Text('Charger une partie'),
               onPressed: _loadGame,
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 40),
+                minimumSize: const Size(double.infinity, 50),
+                backgroundColor: Colors.blueGrey,
+                foregroundColor: Colors.white,
+                textStyle: const TextStyle(fontSize: 18),
               ),
             ),
 
